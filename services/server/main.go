@@ -44,7 +44,7 @@ func handlers() {
 	router.HandleFunc("/tasks/{id}", deleteTask).Methods("DELETE")
 	router.HandleFunc("/tasks/{id}/check", checkTask).Methods("PUT")
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Fatal(http.ListenAndServe(":5000", router))
 }
 
 // APIs
@@ -66,9 +66,8 @@ func getTasks(res http.ResponseWriter, req *http.Request) {
 	payload := map[string][]Task{"tasks": tasks}
 
 	// respond
-	res.Header().Set("Content-Type", "application/json") // set header to accept json
-	res.WriteHeader(200)                                 // set status code
-	json.NewEncoder(res).Encode(payload)                 // write response message
+	setHeader(&res, 200)
+	json.NewEncoder(res).Encode(payload) // write response message
 
 }
 
@@ -98,9 +97,9 @@ func addTask(res http.ResponseWriter, req *http.Request) {
 	payload := map[string]Task{"task": task}
 
 	// respond
-	res.Header().Set("Content-Type", "application/json") // set header to accept json
-	res.WriteHeader(201)                                 // set status code
-	json.NewEncoder(res).Encode(payload)                 // write response message
+
+	setHeader(&res, 201)
+	json.NewEncoder(res).Encode(payload)
 
 }
 
@@ -120,12 +119,11 @@ func getTask(res http.ResponseWriter, req *http.Request) {
 	if isTask(oid) {
 		payload := map[string]Task{"task": task}
 
-		res.Header().Set("Content-Type", "application/json")
-		res.WriteHeader(200)
+		setHeader(&res, 200)
 		json.NewEncoder(res).Encode(payload)
 
 	} else {
-		res.WriteHeader(404)
+		setHeader(&res, 404)
 
 	}
 }
@@ -151,10 +149,12 @@ func updateTask(res http.ResponseWriter, req *http.Request) {
 	if isTask(oid) {
 		collection.FindOneAndUpdate(ctx, filter, update)
 
-		respond(res, "Task updated.")
+		setHeader(&res, 200)
+		json.NewEncoder(res).Encode("Task updated.")
 
 	} else {
-		res.WriteHeader(404)
+		setHeader(&res, 404)
+
 	}
 
 }
@@ -170,10 +170,12 @@ func deleteTask(res http.ResponseWriter, req *http.Request) {
 
 		collection.DeleteOne(ctx, filter)
 
-		respond(res, "Task deleted.")
+		setHeader(&res, 200)
+		json.NewEncoder(res).Encode("Task deleted.")
 
 	} else {
-		res.WriteHeader(404)
+		setHeader(&res, 404)
+
 	}
 }
 
@@ -183,12 +185,13 @@ func checkTask(res http.ResponseWriter, req *http.Request) {
 	id := params["id"]
 	oid, _ := primitive.ObjectIDFromHex(id)
 
-	var task Task
-	err := json.NewDecoder(req.Body).Decode(&task)
-	alarm(err)
-
 	filter := bson.D{primitive.E{Key: "_id", Value: oid}}
 
+	// get the task to inverse the status
+	var task Task
+	collection.FindOne(ctx, filter).Decode(&task)
+
+	// the update operation
 	update := bson.D{primitive.E{Key: "$set", Value: bson.D{
 		primitive.E{Key: "completed", Value: !task.Completed},
 	}}}
@@ -197,10 +200,12 @@ func checkTask(res http.ResponseWriter, req *http.Request) {
 
 		collection.FindOneAndUpdate(ctx, filter, update)
 
-		respond(res, "Task checked.")
+		setHeader(&res, 200)
+		json.NewEncoder(res).Encode("Task checked.")
 
 	} else {
-		res.WriteHeader(404)
+		setHeader(&res, 404)
+
 	}
 }
 
@@ -225,10 +230,12 @@ func isTask(oid primitive.ObjectID) bool {
 
 }
 
-func respond(res http.ResponseWriter, msg string) {
-	res.Header().Set("Content-Type", "application/json")
-	res.WriteHeader(200)
-	json.NewEncoder(res).Encode(msg)
+func setHeader(res *http.ResponseWriter, statusCode int) {
+	(*res).Header().Set("Content-Type", "application/json")                                                    // set header to accept json
+	(*res).Header().Set("Access-Control-Allow-Origin", "*")                                                    // allow cors
+	(*res).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")                     // allow cors methods
+	(*res).Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Authorization") // allow auth
+	(*res).WriteHeader(statusCode)                                                                             // return status code
 }
 
 func main() {
